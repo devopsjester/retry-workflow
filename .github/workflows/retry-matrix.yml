@@ -6,85 +6,113 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Add a coordinator job to track success state
-  attempt-coordinator:
+  # Job to track which attempts should be skipped
+  attempt-tracker:
     runs-on: ubuntu-latest
-    outputs:
-      has-previous-success: 'false'
     steps:
-      - run: echo "Initialize coordinator job"
+      - name: Create attempt status file
+        run: |
+          mkdir -p ~/attempt-status
+          echo "false" > ~/attempt-status/success
+      
+      - name: Upload attempt status
+        uses: actions/upload-artifact@v3
+        with:
+          name: attempt-status
+          path: ~/attempt-status
+          retention-days: 1
 
   retry-job:
-    needs: attempt-coordinator
     strategy:
-      max-parallel: 1
-      fail-fast: false
       matrix:
         attempt: [1, 2, 3]
-    
-    # Adding an ID for each matrix job for tracking purposes
-    name: retry-${{ matrix.attempt }}
-    id: retry-${{ matrix.attempt }}
-    
+      fail-fast: false
+      max-parallel: 1
+
     runs-on: ubuntu-latest
+    needs: attempt-tracker
     continue-on-error: true
-    outputs:
-      success: ${{ steps.set-success.outputs.success }}
-
-    # Only run if we're on the first attempt OR previous attempts have all failed
-    if: ${{ matrix.attempt == 1 || needs.attempt-coordinator.outputs.has-previous-success == 'false' }}
-
+    name: retry-${{ matrix.attempt }}
+    
     steps:
-      - name: Echo attempt number
+      # Download the shared status file
+      - name: Download attempt status
+        uses: actions/download-artifact@v3
+        with:
+          name: attempt-status
+          path: ~/attempt-status
+      
+      # Read the status file to check if previous attempts succeeded
+      - name: Check previous success
+        id: check-status
+        run: |
+          if [[ "$(cat ~/attempt-status/success)" == "true" ]]; then
+            echo "should_skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "should_skip=false" >> $GITHUB_OUTPUT
+          fi
+      
+      # Skip this attempt if a previous one succeeded
+      - name: Skip on previous success
+        if: steps.check-status.outputs.should_skip == 'true'
+        run: |
+          echo "Skipping attempt ${{ matrix.attempt }} because a previous attempt succeeded"
+          exit 0
+      
+      # Run the actual attempt
+      - name: Run attempt
         id: run-attempt
+        if: steps.check-status.outputs.should_skip != 'true'
         run: |
           echo "This is attempt ${{ matrix.attempt }}"
-          # Fail first attempt, succeed on others
           if [ "${{ matrix.attempt }}" = "1" ]; then
             exit 1
           else
             exit 0
           fi
       
-      - name: Set success output
-        id: set-success
-        if: success()
-        run: echo "success=true" >> $GITHUB_OUTPUT
-      
-      # Write a marker file if successful
-      - name: Signal success to next jobs
-        if: success()
+      # Update status if successful
+      - name: Record success
+        if: success() && steps.check-status.outputs.should_skip != 'true'
         run: |
+          echo "true" > ~/attempt-status/success
           echo "Success in attempt ${{ matrix.attempt }}"
-          # Update the coordinator output for next attempts
-          echo "has-previous-success=true" >> $GITHUB_ENV
+      
+      # Upload updated status for future matrix jobs
+      - name: Upload updated status
+        if: always() && steps.check-status.outputs.should_skip != 'true'
+        uses: actions/upload-artifact@v3
+        with:
+          name: attempt-status
+          path: ~/attempt-status
+          retention-days: 1
 
-  # Use a separate job to check overall success
-  check-matrix-success:
+  # Special job to extract final status
+  check-success:
     needs: retry-job
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Check if any attempt succeeded
+      - name: Download final status
+        uses: actions/download-artifact@v3
+        with:
+          name: attempt-status
+          path: ~/attempt-status
+      
+      - name: Check final result
         run: |
-          # Debug output to see what we're working with
-          echo "Job outputs: ${{ toJSON(needs.retry-job.outputs) }}"
-          echo "Job result: ${{ needs.retry-job.result }}"
-          
-          if [[ "${{ contains(needs.retry-job.outputs.*.success, 'true') }}" == "true" ]]; then
+          if [[ "$(cat ~/attempt-status/success)" == "true" ]]; then
             echo "At least one attempt succeeded"
-            exit 0
           else
             echo "All attempts failed"
             exit 1
           fi
 
   follow-up-job:
-    needs: check-matrix-success
+    needs: check-success
     runs-on: ubuntu-latest
-    
     steps:
       - name: Echo completion message
         run: |
-          echo "The retry-job has completed successfully!"
+          echo "The retry job has completed successfully!"
           echo "This job runs after retry-job succeeds"
