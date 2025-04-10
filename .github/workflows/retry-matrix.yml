@@ -6,6 +6,15 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Add a job to track success state
+  attempt-tracker:
+    runs-on: ubuntu-latest
+    outputs:
+      success: ${{ steps.init.outputs.success }}
+    steps:
+      - id: init
+        run: echo "success=false" >> $GITHUB_OUTPUT
+
   retry-job:
     strategy:
       max-parallel: 1
@@ -14,15 +23,34 @@ jobs:
         # This creates 3 attempts
         attempt: [1, 2, 3]
 
+    needs: attempt-tracker
     runs-on: ubuntu-latest
     continue-on-error: true
     outputs:
       matrix-success: ${{ steps.check-success.outputs.success }}
 
-    # Skip remaining attempts if a previous one succeeds
-    if: ${{ !contains(join(needs.*.result, ','), 'success') }}
+    # Skip subsequent attempts if any previous attempt succeeded
+    if: ${{ needs.attempt-tracker.outputs.success != 'true' }}
 
     steps:
+      - name: Check previous attempts
+        id: check-previous
+        if: ${{ matrix.attempt > 1 }}
+        uses: actions/download-artifact@v3
+        continue-on-error: true
+        with:
+          name: attempt-success
+          path: /tmp
+
+      - name: Skip if previous attempt succeeded
+        id: skip-check
+        if: ${{ matrix.attempt > 1 }}
+        run: |
+          if [ -f "/tmp/success" ]; then
+            echo "Previous attempt succeeded, skipping this attempt"
+            exit 0
+          fi
+          
       - name: Echo attempt number
         id: run-attempt
         run: |
@@ -37,7 +65,18 @@ jobs:
       - name: Check success status
         id: check-success
         if: success()
-        run: echo "success=true" >> $GITHUB_OUTPUT
+        run: |
+          echo "success=true" >> $GITHUB_OUTPUT
+          mkdir -p /tmp/artifacts
+          echo "true" > /tmp/artifacts/success
+      
+      - name: Upload success marker
+        if: steps.check-success.outcome == 'success'
+        uses: actions/upload-artifact@v3
+        with:
+          name: attempt-success
+          path: /tmp/artifacts/success
+          retention-days: 1
 
   # Dummy aggregator job that succeeds if any matrix job succeeds
   check-matrix-success:
