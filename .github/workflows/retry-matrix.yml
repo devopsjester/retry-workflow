@@ -15,8 +15,9 @@ jobs:
 
     runs-on: ubuntu-latest
     continue-on-error: true
+    # Fixed: Use a single output rather than dynamic output names
     outputs:
-      success-${{ matrix.attempt }}: ${{ steps.set-success.outputs.success }}
+      success: ${{ steps.set-success.outputs.success }}
 
     steps:
       # Check if any previous attempt was successful by looking for a cache hit
@@ -66,9 +67,10 @@ jobs:
     needs: retry-job
     runs-on: ubuntu-latest
     steps:
+      # Fixed: Changed how we check for success across matrix jobs
       - name: Check if any attempt succeeded
         run: |
-          if [[ "${{ contains(needs.retry-job.outputs.*, 'true') }}" == "true" ]]; then
+          if [[ "${{ contains(needs.retry-job.outputs.*.success, 'true') }}" == "true" ]]; then
             echo "At least one attempt succeeded"
           else
             echo "All attempts failed"
