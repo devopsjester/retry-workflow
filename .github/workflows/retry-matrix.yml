@@ -16,7 +16,7 @@ jobs:
           echo "false" > ~/attempt-status/success
       
       - name: Upload attempt status
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: attempt-status
           path: ~/attempt-status
@@ -37,7 +37,7 @@ jobs:
     steps:
       # Download the shared status file
       - name: Download attempt status
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: attempt-status
           path: ~/attempt-status
@@ -81,7 +81,7 @@ jobs:
       # Upload updated status for future matrix jobs
       - name: Upload updated status
         if: always() && steps.check-status.outputs.should_skip != 'true'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: attempt-status
           path: ~/attempt-status
@@ -94,7 +94,7 @@ jobs:
     if: always()
     steps:
       - name: Download final status
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: attempt-status
           path: ~/attempt-status
