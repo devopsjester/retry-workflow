@@ -6,51 +6,35 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Add a job to track success state
-  attempt-tracker:
-    runs-on: ubuntu-latest
-    outputs:
-      success: ${{ steps.init.outputs.success }}
-    steps:
-      - id: init
-        run: echo "success=false" >> $GITHUB_OUTPUT
-
   retry-job:
     strategy:
       max-parallel: 1
       fail-fast: false
       matrix:
-        # This creates 3 attempts
         attempt: [1, 2, 3]
 
-    needs: attempt-tracker
     runs-on: ubuntu-latest
     continue-on-error: true
     outputs:
-      matrix-success: ${{ steps.check-success.outputs.success }}
-
-    # Skip subsequent attempts if any previous attempt succeeded
-    if: ${{ needs.attempt-tracker.outputs.success != 'true' }}
+      success-${{ matrix.attempt }}: ${{ steps.set-success.outputs.success }}
 
     steps:
-      - name: Check previous attempts
-        id: check-previous
-        if: ${{ matrix.attempt > 1 }}
-        uses: actions/download-artifact@v4
-        continue-on-error: true
+      # Check if any previous attempt was successful by looking for a cache hit
+      - name: Check for previous success
+        id: check-cache
+        uses: actions/cache@v3
         with:
-          name: attempt-success
-          path: /tmp
+          path: ~/.success-marker
+          key: success-marker-${{ github.run_id }}
+          restore-keys: success-marker-${{ github.run_id }}
 
-      - name: Skip if previous attempt succeeded
-        id: skip-check
-        if: ${{ matrix.attempt > 1 }}
+      # Skip this attempt if cache was found (previous attempt succeeded)
+      - name: Skip if previous success
+        if: steps.check-cache.outputs.cache-hit == 'true'
         run: |
-          if [ -f "/tmp/success" ]; then
-            echo "Previous attempt succeeded, skipping this attempt"
-            exit 0
-          fi
-          
+          echo "A previous attempt was successful, skipping this attempt"
+          exit 0
+
       - name: Echo attempt number
         id: run-attempt
         run: |
@@ -62,31 +46,29 @@ jobs:
             exit 0
           fi
       
-      - name: Check success status
-        id: check-success
+      - name: Set success output
+        id: set-success
         if: success()
         run: |
           echo "success=true" >> $GITHUB_OUTPUT
-          mkdir -p /tmp/artifacts
-          echo "true" > /tmp/artifacts/success
+          mkdir -p ~/.success-marker
+          echo "success" > ~/.success-marker/marker
       
-      - name: Upload success marker
-        if: steps.check-success.outcome == 'success'
-        uses: actions/upload-artifact@v4
+      # Save success cache if this attempt succeeded
+      - name: Save success cache
+        if: steps.set-success.outputs.success == 'true'
+        uses: actions/cache/save@v3
         with:
-          name: attempt-success
-          path: /tmp/artifacts/success
-          retention-days: 1
+          path: ~/.success-marker
+          key: success-marker-${{ github.run_id }}
 
-  # Dummy aggregator job that succeeds if any matrix job succeeds
-  # and explicitly fails if none succeeded
   check-matrix-success:
     needs: retry-job
     runs-on: ubuntu-latest
     steps:
       - name: Check if any attempt succeeded
         run: |
-          if [[ "${{ contains(needs.retry-job.outputs.*.matrix-success, 'true') }}" == "true" ]]; then
+          if [[ "${{ contains(needs.retry-job.outputs.*, 'true') }}" == "true" ]]; then
             echo "At least one attempt succeeded"
           else
             echo "All attempts failed"
