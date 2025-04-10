@@ -1,0 +1,41 @@
+name: Retry Matrix Workflow
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  retry-job:
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        # This creates 3 attempts
+        attempt: [1, 2, 3]
+
+    runs-on: ubuntu-latest
+
+    # Skip remaining attempts if a previous one succeeds
+    if: ${{ !contains(join(needs.*.result, ','), 'success') }}
+
+    steps:
+      - name: Echo attempt number
+        run: |
+          echo "This is attempt ${{ matrix.attempt }}"
+          # Fail first attempt, succeed on others
+          if [ "${{ matrix.attempt }}" = "1" ]; then
+            exit 1
+          else
+            exit 0
+          fi
+
+  follow-up-job:
+    needs: retry-job
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Echo completion message
+        run: |
+          echo "The retry-job has completed successfully!"
+          echo "This job runs after retry-job succeeds"
