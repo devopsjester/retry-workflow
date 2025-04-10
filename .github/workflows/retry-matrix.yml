@@ -6,36 +6,35 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Add a coordinator job to track success state
+  attempt-coordinator:
+    runs-on: ubuntu-latest
+    outputs:
+      has-previous-success: 'false'
+    steps:
+      - run: echo "Initialize coordinator job"
+
   retry-job:
+    needs: attempt-coordinator
     strategy:
       max-parallel: 1
       fail-fast: false
       matrix:
         attempt: [1, 2, 3]
-
+    
+    # Adding an ID for each matrix job for tracking purposes
+    name: retry-${{ matrix.attempt }}
+    id: retry-${{ matrix.attempt }}
+    
     runs-on: ubuntu-latest
     continue-on-error: true
-    # Fixed: Use a single output rather than dynamic output names
     outputs:
       success: ${{ steps.set-success.outputs.success }}
 
+    # Only run if we're on the first attempt OR previous attempts have all failed
+    if: ${{ matrix.attempt == 1 || needs.attempt-coordinator.outputs.has-previous-success == 'false' }}
+
     steps:
-      # Check if any previous attempt was successful by looking for a cache hit
-      - name: Check for previous success
-        id: check-cache
-        uses: actions/cache@v3
-        with:
-          path: ~/.success-marker
-          key: success-marker-${{ github.run_id }}
-          restore-keys: success-marker-${{ github.run_id }}
-
-      # Skip this attempt if cache was found (previous attempt succeeded)
-      - name: Skip if previous success
-        if: steps.check-cache.outputs.cache-hit == 'true'
-        run: |
-          echo "A previous attempt was successful, skipping this attempt"
-          exit 0
-
       - name: Echo attempt number
         id: run-attempt
         run: |
@@ -50,28 +49,31 @@ jobs:
       - name: Set success output
         id: set-success
         if: success()
-        run: |
-          echo "success=true" >> $GITHUB_OUTPUT
-          mkdir -p ~/.success-marker
-          echo "success" > ~/.success-marker/marker
+        run: echo "success=true" >> $GITHUB_OUTPUT
       
-      # Save success cache if this attempt succeeded
-      - name: Save success cache
-        if: steps.set-success.outputs.success == 'true'
-        uses: actions/cache/save@v3
-        with:
-          path: ~/.success-marker
-          key: success-marker-${{ github.run_id }}
+      # Write a marker file if successful
+      - name: Signal success to next jobs
+        if: success()
+        run: |
+          echo "Success in attempt ${{ matrix.attempt }}"
+          # Update the coordinator output for next attempts
+          echo "has-previous-success=true" >> $GITHUB_ENV
 
+  # Use a separate job to check overall success
   check-matrix-success:
     needs: retry-job
     runs-on: ubuntu-latest
+    if: always()
     steps:
-      # Fixed: Changed how we check for success across matrix jobs
       - name: Check if any attempt succeeded
         run: |
+          # Debug output to see what we're working with
+          echo "Job outputs: ${{ toJSON(needs.retry-job.outputs) }}"
+          echo "Job result: ${{ needs.retry-job.result }}"
+          
           if [[ "${{ contains(needs.retry-job.outputs.*.success, 'true') }}" == "true" ]]; then
             echo "At least one attempt succeeded"
+            exit 0
           else
             echo "All attempts failed"
             exit 1
