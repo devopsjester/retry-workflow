@@ -36,7 +36,7 @@ jobs:
       - name: Check previous attempts
         id: check-previous
         if: ${{ matrix.attempt > 1 }}
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: attempt-success
@@ -72,22 +72,29 @@ jobs:
       
       - name: Upload success marker
         if: steps.check-success.outcome == 'success'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: attempt-success
           path: /tmp/artifacts/success
           retention-days: 1
 
   # Dummy aggregator job that succeeds if any matrix job succeeds
+  # and explicitly fails if none succeeded
   check-matrix-success:
     needs: retry-job
     runs-on: ubuntu-latest
-    if: ${{ contains(needs.retry-job.outputs.*.matrix-success, 'true') }}
     steps:
-      - run: echo "At least one attempt succeeded"
+      - name: Check if any attempt succeeded
+        run: |
+          if [[ "${{ contains(needs.retry-job.outputs.*.matrix-success, 'true') }}" == "true" ]]; then
+            echo "At least one attempt succeeded"
+          else
+            echo "All attempts failed"
+            exit 1
+          fi
 
   follow-up-job:
-    needs: retry-job
+    needs: check-matrix-success
     runs-on: ubuntu-latest
     
     steps:
