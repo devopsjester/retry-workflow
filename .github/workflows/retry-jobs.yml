@@ -14,6 +14,20 @@ jobs:
         continue-on-error: true
         name: retry-${{ matrix.attempt }}
         steps:
+            - name: look for previous success
+              id: success-checker
+              uses: actions/download-artifact@v4
+              with:
+                name: success-artifact
+
+            - name: skip the rest of the job if previous attempts succeeded
+              id: skip-job
+              run: |
+                if [ -f success.txt ]; then
+                    echo "Skipping attempt ${{ matrix.attempt }} because a previous attempt succeeded"
+                    exit 0
+                fi
+
             - name: Do stuff
               id: do-stuff
               run: |
