@@ -48,7 +48,7 @@ jobs:
               run: |
                 echo "doing stuff, attempt number ${{ matrix.attempt }}"
                 # Use the input parameter to determine which attempt will pass
-                if [ "${{ matrix.attempt }}" != "${{ github.event.inputs.passing_attempt || '2' }}" ]; then
+                if [ "${{ matrix.attempt }}" != "${{ github.event.inputs.passing_attempt || '0' }}" ]; then
                     echo "Attempt ${{ matrix.attempt }} fails because it's not the designated passing attempt ${{ github.event.inputs.passing_attempt }}"
                     exit 1
                 fi                
@@ -58,7 +58,7 @@ jobs:
               run: |
                 echo "doing stuff, attempt number ${{ matrix.attempt }}"
                 # Record success for the passing attempt
-                if [ "${{ matrix.attempt }}" = "${{ github.event.inputs.passing_attempt || '2' }}" ]; then
+                if [ "${{ matrix.attempt }}" = "${{ github.event.inputs.passing_attempt || '0' }}" ]; then
                     touch success.txt
                     echo "Attempt ${{ matrix.attempt }} succeeded as specified"
                 fi
