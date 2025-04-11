@@ -1,0 +1,42 @@
+name: Retry Matrix Workflow
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+    retry:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                attempt: [1, 2, 3]
+        continue-on-error: true
+        name: retry-${{ matrix.attempt }}
+        steps:
+            - name: Do stuff
+              id: do-stuff
+              run: |
+                echo "doing stuff, attempt number ${{ matrix.attempt }}"
+                if [ "${{ matrix.attempt }}" != "1" ]; then
+                    echo "arbitrary failure on 1st attempt (and 3rd attempt if I make it this far)"
+                    exit 1
+                fi                
+
+            - name: record-success
+              id: record-success
+              run: |
+                echo "doing stuff, attempt number ${{ matrix.attempt }}"
+                # succeeding on the second attempt. recording a file
+                if [ "${{ matrix.attempt }}" = "2" ]; then
+                    touch success.txt
+                fi
+            
+            - name: Upload success artifact if it exists
+              id: upload-artifact
+              uses: actions/upload-artifact@v4
+              with:
+                name: success-artifact
+                path: success.txt
+                if-no-files-found: ignore
+
