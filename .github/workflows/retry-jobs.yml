@@ -18,7 +18,7 @@ jobs:
               id: do-stuff
               run: |
                 echo "doing stuff, attempt number ${{ matrix.attempt }}"
-                if [ "${{ matrix.attempt }}" != "1" ]; then
+                if [ "${{ matrix.attempt }}" != "2" ]; then
                     echo "arbitrary failure on 1st attempt (and 3rd attempt if I make it this far)"
                     exit 1
                 fi                
