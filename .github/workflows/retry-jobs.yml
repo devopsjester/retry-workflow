@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      passing_attempt:
+        description: 'Which attempt will pass (1, 2, or 3)'
+        required: true
+        default: '2'
+        type: choice
+        options:
+          - '1'
+          - '2'
+          - '3'
 
 jobs:
     retry:
@@ -38,8 +48,9 @@ jobs:
               id: do-stuff
               run: |
                 echo "doing stuff, attempt number ${{ matrix.attempt }}"
-                if [ "${{ matrix.attempt }}" != "2" ]; then
-                    echo "arbitrary failure on 1st attempt (and 3rd attempt if I make it this far)"
+                # Use the input parameter to determine which attempt will pass
+                if [ "${{ matrix.attempt }}" != "${{ github.event.inputs.passing_attempt || '2' }}" ]; then
+                    echo "Attempt ${{ matrix.attempt }} fails because it's not the designated passing attempt ${{ github.event.inputs.passing_attempt }}"
                     exit 1
                 fi                
 
@@ -47,9 +58,10 @@ jobs:
               id: record-success
               run: |
                 echo "doing stuff, attempt number ${{ matrix.attempt }}"
-                # succeeding on the second attempt. recording a file
-                if [ "${{ matrix.attempt }}" = "2" ]; then
+                # Record success for the passing attempt
+                if [ "${{ matrix.attempt }}" = "${{ github.event.inputs.passing_attempt || '2' }}" ]; then
                     touch success.txt
+                    echo "Attempt ${{ matrix.attempt }} succeeded as specified"
                 fi
             
             - name: Upload success artifact if it exists
