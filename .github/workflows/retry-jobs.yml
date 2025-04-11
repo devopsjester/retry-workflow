@@ -8,6 +8,10 @@ on:
 jobs:
     retry:
         runs-on: ubuntu-latest
+        # Add permissions needed for GitHub API
+        permissions:
+          contents: read
+          actions: read
         strategy:
             matrix:
                 attempt: [1, 2, 3]
@@ -16,14 +20,16 @@ jobs:
         steps:
             - name: Check for Artifact
               id: check-artifact
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
               run: |
                 # Look for artifacts in the current workflow run only
                 artifacts=$(gh api \
                   repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
                   --jq '.artifacts[].name')
                 if echo "$artifacts" | grep -q "success-artifact"; then
-                    echo "Skipping attempt ${{ matrix.attempt }} because a previous attempt succeeded"
-                    exit 0
+                  echo "Skipping attempt ${{ matrix.attempt }} because a previous attempt succeeded"
+                  exit 0
                 fi
 
             - name: Do stuff
