@@ -60,3 +60,32 @@ jobs:
                 path: success.txt
                 if-no-files-found: ignore
 
+    # New follow-up job that runs after retry job
+    follow-up:
+        needs: retry
+        runs-on: ubuntu-latest
+        # Add permissions needed for GitHub API
+        permissions:
+          contents: read
+          actions: read
+        steps:
+            - name: Check for success artifact
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                # Check for success artifact from any retry attempt
+                artifacts=$(gh api \
+                  repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+                  --jq '.artifacts[].name')
+                if echo "$artifacts" | grep -q "success-artifact"; then
+                  echo "At least one retry attempt succeeded!"
+                else
+                  echo "All retry attempts failed"
+                  exit 1
+                fi
+                
+            - name: Run follow-up tasks
+              run: |
+                echo "Running follow-up tasks after successful retry"
+                echo "This job only executes if at least one retry attempt succeeded"
+
