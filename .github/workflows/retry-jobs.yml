@@ -30,6 +30,8 @@ jobs:
                 if echo "$artifacts" | grep -q "success-artifact"; then
                   echo "Skipping attempt ${{ matrix.attempt }} because a previous attempt succeeded"
                   exit 78
+                else
+                  echo "found nothing, proceeding"
                 fi
 
             - name: Do stuff
