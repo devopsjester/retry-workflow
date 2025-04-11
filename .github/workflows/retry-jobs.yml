@@ -29,6 +29,9 @@ jobs:
                   --jq '.artifacts[].name')
                 if echo "$artifacts" | grep -q "success-artifact"; then
                   echo "Skipping attempt ${{ matrix.attempt }} because a previous attempt succeeded"
+                  echo "GITHUB_ACTIONS_STEP_DEBUG=true" >> $GITHUB_ENV
+                  echo "GITHUB_STEP_SUMMARY=Skipped due to previous success" >> $GITHUB_ENV
+                  echo "::stop-commands::skipping-remaining-steps"
                   exit 0
                 fi
 
