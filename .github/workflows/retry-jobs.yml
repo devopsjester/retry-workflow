@@ -14,16 +14,14 @@ jobs:
         continue-on-error: true
         name: retry-${{ matrix.attempt }}
         steps:
-            - name: look for previous success
-              id: success-checker
-              uses: actions/download-artifact@v4
-              with:
-                name: success-artifact
-
-            - name: skip the rest of the job if previous attempts succeeded
-              id: skip-job
+            - name: Check for Artifact
+              id: check-artifact
               run: |
-                if [ -f success.txt ]; then
+                # Look for artifacts in the current workflow run only
+                artifacts=$(gh api \
+                  repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/artifacts \
+                  --jq '.artifacts[].name')
+                if echo "$artifacts" | grep -q "success-artifact"; then
                     echo "Skipping attempt ${{ matrix.attempt }} because a previous attempt succeeded"
                     exit 0
                 fi
